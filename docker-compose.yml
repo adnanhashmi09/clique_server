@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  scylla1:
+    image: scylla_main:latest
+    container_name: scylla1
+    hostname: scylla1
+    volumes:
+      - ./scylla_backup/scylla1/lib/scylla:/var/lib/scylla
+    ports:
+      - "9042:9042" # CQL native protocol port
+      - "7000:7000" # Inter-node communication port
+      - "7001:7001" # TLS inter-node communication port
+      - "7199:7199" # JMX port
+    restart: always
+
+  scylla2:
+    image: scylla_main:latest
+    container_name: scylla2
+    hostname: scylla2
+    volumes:
+      - ./scylla_backup/scylla2/lib/scylla:/var/lib/scylla
+    command: "--seeds=scylla1"
+    restart: always
+
+  scylla3:
+    image: scylla_main:latest
+    container_name: scylla3
+    hostname: scylla3
+    volumes:
+      - ./scylla_backup/scylla3/lib/scylla:/var/lib/scylla
+    command: "--seeds=scylla1"
+    restart: always
