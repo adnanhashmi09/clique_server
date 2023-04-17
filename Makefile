@@ -30,6 +30,9 @@ scylla_init:
 
 scylla_create_tables: 
 	cqlsh -u $(user) -p $(password) -f ./migrations/user.cql
+
+set_request_capacity:
+	sudo sysctl -w fs.aio-max-nr=1048576
 	
-.PHONY: scylla_build_image scylla_new_dangerous scylla_start scylla_close scylla_cqlsh scylla_nodestatus scylla_repair scylla_init
+.PHONY: scylla_build_image scylla_new_dangerous scylla_start scylla_close scylla_cqlsh scylla_nodestatus scylla_repair scylla_init set_request_capacity
 

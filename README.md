@@ -6,13 +6,14 @@ Install `cqlsh`
 pip install cqlsh
 ```
 ## Initialize DB
-1) Create scylla docker image
+1)  Create scylla docker image
 ```bash
 make scylla_build_image
 ```
 
-2) Run the db 
+2) Set request capacity and run the db 
 ```bash
+make set_request_capacity # run this command only the first time running the db or after rebooting the system
 make scylla_new_dangerous
 ```
 wait for the three nodes to be set up properly, until the status of all the three racks in UN.
