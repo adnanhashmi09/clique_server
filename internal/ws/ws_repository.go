@@ -37,7 +37,7 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 	}
 
 	// Check if room name already exists for that admin
-	var room_id gocql.UUID
+	var room_id string
 
 	if err := r.db.Query(`SELECT id FROM rooms WHERE admin=? AND room_name=? ALLOW FILTERING`,
 		room.Admin, room.RoomName).WithContext(ctx).Scan(&room_id); err != nil {
@@ -47,7 +47,7 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 		}
 	}
 
-	if room_id.String() != "" {
+	if room_id != "" {
 		log.Println("Room id: ", room_id)
 		return nil, errors.New("Room already exists.")
 	}
