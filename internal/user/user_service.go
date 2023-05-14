@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/adnanhashmi09/clique_server/utils"
-	// "github.com/golang-jwt/jwt/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -22,10 +21,6 @@ func NewService(repository REPOSITORY) SERVICE {
 		time.Duration(2) * time.Second,
 	}
 }
-
-const (
-	secretKey = "secret"
-)
 
 func (s *Service) CreateUser(c context.Context, req *CreateUserReq) (*CreateUserRes, error) {
 	ctx, cancel := context.WithTimeout(c, s.timeout)
@@ -80,22 +75,15 @@ func (s *Service) Login(c context.Context, req *LoginUserReq) (*LoginUserRes, er
 	if err != nil {
 		return nil, fmt.Errorf("Passwords don't match. %v", err)
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomClaims{
-		ID:       u.ID.String(),
-		Username: u.Username,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    u.ID.String(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-		},
-	})
 
-	ss, err := token.SignedString([]byte(secretKey))
+	signed_jwt, err := utils.Generate_JWT_Token(u.ID.String(), u.Username)
+
 	if err != nil {
 		return nil, err
 	}
 
 	return &LoginUserRes{
-		accessToken: ss,
+		accessToken: signed_jwt,
 		ID:          u.ID,
 		Username:    u.Username,
 		Email:       u.Email,
