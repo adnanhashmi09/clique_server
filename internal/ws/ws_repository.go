@@ -52,27 +52,30 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 		return nil, errors.New("Room already exists.")
 	}
 
-	// Insert into rooms table
-	if err := r.db.Query(`INSERT INTO rooms (id, room_name, channels, members, admin, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?)`, room.ID, room.RoomName, room.Channels,
-		room.Members, room.Admin, room.CreatedAt).WithContext(ctx).Exec(); err != nil {
-		log.Println("Error occured while executing query to create room. ", err)
-		return nil, errors.New("Admin id doesn't exist.")
-	}
+	batch := r.db.NewBatch(gocql.LoggedBatch).WithContext(ctx)
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt:       "INSERT INTO rooms (id, room_name, channels, members, admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		Args:       []interface{}{room.ID, room.RoomName, room.Channels, room.Members, room.Admin, room.CreatedAt},
+		Idempotent: true,
+	})
 
-	// Insert the default_channel into channels table
-	if err := r.db.Query(`INSERT INTO channels (id, channel_name, is_direct_channel, members, created_at, messages)
-                       VALUES (?, ?, ?, ?, ?, ?)`, default_channel.ID, default_channel.ChannelName, default_channel.IsDirectChannel,
-		default_channel.Members, default_channel.CreatedAt, default_channel.Messages).WithContext(ctx).Exec(); err != nil {
-		log.Println("Error occured while executing query to create default channel.", err)
-		return nil, errors.New("Admin id doesn't exist.")
-	}
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: "INSERT INTO channels (id, channel_name, is_direct_channel, members, created_at, messages) VALUES (?, ?, ?, ?, ?, ?)",
+		Args: []interface{}{default_channel.ID, default_channel.ChannelName, default_channel.IsDirectChannel,
+			default_channel.Members, default_channel.CreatedAt, default_channel.Messages},
+		Idempotent: true,
+	})
 
-	// Add the room in users table
-	if err := r.db.Query(`UPDATE users SET rooms = rooms + {?} where id=? AND username=? AND email=?`,
-		room.ID, room.Admin, admin_username, admin_email).WithContext(ctx).Exec(); err != nil {
-		log.Println("Error occured while executing query update user room set to include newly created room. ", err)
-		return nil, errors.New("Admin id doesn't exist.")
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt:       "UPDATE users SET rooms = rooms + {?} where id=? AND username=? AND email=?",
+		Args:       []interface{}{room.ID, room.Admin, admin_username, admin_email},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in create room: ", err)
+		return nil, errors.New("Server Error.")
 	}
 
 	return room, nil
