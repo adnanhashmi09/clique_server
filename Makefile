@@ -30,6 +30,7 @@ scylla_init:
 
 scylla_create_tables: 
 	cqlsh -u $(user) -p $(password) -f ./migrations/user.cql
+	cqlsh -u $(user) -p $(password) -f ./migrations/rooms.cql
 
 set_request_capacity:
 	sudo sysctl -w fs.aio-max-nr=1048576

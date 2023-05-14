@@ -4,12 +4,12 @@ import (
 	"net/http"
 
 	"github.com/adnanhashmi09/clique_server/internal/user"
+	"github.com/adnanhashmi09/clique_server/internal/ws"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
-	"golang.org/x/net/websocket"
 )
 
-func RouterInit(userHandler *user.Handler) http.Handler {
+func RouterInit(userHandler *user.Handler, wsHandler *ws.Handler) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(cors.Handler(cors.Options{
@@ -25,7 +25,15 @@ func RouterInit(userHandler *user.Handler) http.Handler {
 		AuthRoutes(r, userHandler)
 	})
 
-	r.Mount("/ws", websocket.Handler(handleWsConnection))
+	r.Route("/ws", func(r chi.Router) {
+		WSRoutes(r, wsHandler)
+	})
+
+	r.Route("/chat", func(r chi.Router) {
+		RoomRoutes(r, wsHandler)
+	})
+
+	// r.Mount("/ws", websocket.Handler(handleWsConnection))
 
 	return r
 }

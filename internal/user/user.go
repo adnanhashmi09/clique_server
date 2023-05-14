@@ -7,13 +7,13 @@ import (
 )
 
 type User struct {
-	ID                gocql.UUID `json:"id"`
-	Username          string     `json:"username"`
-	Email             string     `json:"email"`
-	Name              string     `json:"name"`
-	Password          string     `json:"password"`
-	Rooms             []string   `json:"rooms"`
-	DirectMsgChannels []int      `json:"direct_msg_channel_id"`
+	ID                gocql.UUID   `json:"id"`
+	Username          string       `json:"username"`
+	Email             string       `json:"email"`
+	Name              string       `json:"name"`
+	Password          string       `json:"password"`
+	Rooms             []gocql.UUID `json:"rooms"`
+	DirectMsgChannels []gocql.UUID `json:"direct_msg_channel_id"`
 }
 
 type CreateUserReq struct {

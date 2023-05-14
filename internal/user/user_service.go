@@ -40,7 +40,7 @@ func (s *Service) CreateUser(c context.Context, req *CreateUserReq) (*CreateUser
 	new_user := &User{
 		Username: req.Username,
 		Email:    req.Email,
-		Name:     req.Email,
+		Name:     req.Name,
 		Password: hashed_password,
 	}
 

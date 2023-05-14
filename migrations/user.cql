@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT,
   rooms SET<UUID>,
   direct_msg_channels SET<UUID>,
-  PRIMARY KEY (id, email, username)
+  PRIMARY KEY ((id, username, email))
 );
 
 

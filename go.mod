@@ -5,10 +5,10 @@ go 1.20
 require (
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/cors v1.2.1
-	github.com/gocql/gocql v1.3.2
-	github.com/golang-jwt/jwt/v5 v5.0.0-rc.2
+	github.com/gocql/gocql v1.4.0
+	github.com/golang-jwt/jwt/v5 v5.0.0
 	golang.org/x/crypto v0.8.0
-	golang.org/x/net v0.9.0
+	golang.org/x/net v0.10.0
 )
 
 require (
