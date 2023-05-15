@@ -25,6 +25,7 @@ type Room struct {
 type Channel struct {
 	ID              gocql.UUID   `json:"id"`
 	ChannelName     string       `json:"channel_name"`
+	Room            gocql.UUID   `json:"room_id"`
 	Members         []gocql.UUID `json:"members"`
 	IsDirectChannel bool         `json:"is_direct"`
 	Messages        []int        `json:"messages"`
@@ -39,13 +40,15 @@ type CreateRoomReq struct {
 }
 
 type JoinRoomReq struct {
-	ID   gocql.UUID `json:"room_name"`
-	User gocql.UUID `json:"user"`
+	ID       gocql.UUID `json:"room_id"`
+	UserID   gocql.UUID `json:"user_id"`
+	Username string     `json:"username"`
+	Email    string     `json:"email"`
 }
 
 type REPOSITORY interface {
 	CreateRoom(ctx context.Context, room *Room, default_channel *Channel) (*Room, error)
-	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error)
+	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
 }
 
 type SERVICE interface {

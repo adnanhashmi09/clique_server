@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/gocql/gocql"
 )
@@ -75,9 +76,9 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
 		Stmt: `INSERT 
            INTO channels 
-           (id, channel_name, is_direct_channel, members, created_at, messages) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-		Args: []interface{}{default_channel.ID, default_channel.ChannelName, default_channel.IsDirectChannel,
+           (id, channel_name, room_id, is_direct_channel, members, created_at, messages) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		Args: []interface{}{default_channel.ID, default_channel.ChannelName, default_channel.Room, default_channel.IsDirectChannel,
 			default_channel.Members, default_channel.CreatedAt, default_channel.Messages},
 		Idempotent: true,
 	})
@@ -100,7 +101,7 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 }
 
 // TODO: FINISH this function
-func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error) {
+func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error) {
 
 	// check if user doesn't exist
 	var uid gocql.UUID
@@ -108,27 +109,125 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
             SELECT 
             id 
             FROM users 
-            WHERE id=?`,
+            WHERE id=?
+            ALLOW FILTERING`,
 		user_id).WithContext(ctx).Scan(&uid); err != nil {
-		log.Println("Error occured while executing query to get if user exists or not in join room repository function:", err)
-		return nil, errors.New("User id doesn't exist.")
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("User doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if user exists or not in join room repository function:", err)
+			return nil, errors.New("Server error.")
+		}
 	}
 
 	// check if room doesn't exist
-	var rid gocql.UUID
+	var room Room
 	if err := r.db.Query(`
             SELECT 
-            id 
+            * 
             FROM rooms 
-            WHERE id=?`,
-		room_id).WithContext(ctx).Scan(&rid); err != nil {
-		log.Println("Error occured while executing query to get if room exists or not in join room repository function:", err)
-		return nil, errors.New("Room id doesn't exist.")
+            WHERE id=?
+            ALLOW FILTERING`,
+		room_id).WithContext(ctx).Scan(&room.ID, &room.Admin, &room.CreatedAt, &room.Channels, &room.Members, &room.RoomName); err != nil {
+
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Room id doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if room exists or not in join room repository function:", err)
+			return nil, errors.New("Server error.")
+		}
 	}
 
 	// check if user is already a member of room
+	var uid_mem string
+	if err := r.db.Query(`
+            SELECT 
+            id 
+            FROM users 
+            WHERE id=?
+            AND
+            rooms CONTAINS ?
+            ALLOW FILTERING`,
+		user_id, room_id).WithContext(ctx).Scan(&uid_mem); err != nil {
+
+		if err != gocql.ErrNotFound {
+			log.Println("Error occured while executing query to check if user is already in the room in join room repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+
+	}
+
+	if uid_mem != "" {
+		return nil, errors.New("User is already a member of the room.")
+	}
+
+	// Get the channel id of general channel
+	var (
+		chn_id             gocql.UUID
+		channel_created_at time.Time
+	)
+	if err := r.db.Query(`
+            SELECT 
+            id, created_at 
+            FROM channels 
+            WHERE room_id=?
+            AND
+            channel_name='general'
+            ALLOW FILTERING`,
+		room_id).WithContext(ctx).Scan(&chn_id, &channel_created_at); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Channel id doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get general channel id in join room repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+	}
 
 	// Add user to the room
+	// 1. Add user to general channel -> Update channel table
+	batch := r.db.NewBatch(gocql.LoggedBatch)
 
-	return nil, nil
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE channels 
+           SET members = members + {?} 
+           where room_id=? 
+           AND id=?
+           AND created_at=?`,
+		Args:       []interface{}{user_id, room_id, chn_id, channel_created_at},
+		Idempotent: true,
+	})
+
+	// 2. Update Rooms table
+	room.Members[chn_id] = append(room.Members[chn_id], user_id)
+
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE rooms 
+           SET members=? 
+           where id=? 
+           AND admin=?
+           AND created_at=?`,
+		Args:       []interface{}{room.Members, room_id, room.Admin, room.CreatedAt},
+		Idempotent: true,
+	})
+
+	room.Members[chn_id] = append(room.Members[chn_id], user_id)
+
+	// 3. Update users table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE users 
+           SET rooms = rooms + {?} 
+           where id=?
+           AND username=?
+           AND email=?`,
+		Args:       []interface{}{room_id, user_id, username, email},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in join room: ", err)
+		return nil, errors.New("Server Error.")
+	}
+
+	return &room, nil
 }

@@ -14,11 +14,12 @@ CREATE TABLE IF NOT EXISTS rooms (
 CREATE TABLE IF NOT EXISTS channels (
     id UUID,
     channel_name TEXT,
+    room_id UUID,
     members SET<UUID>,
     is_direct_channel BOOLEAN,
     messages LIST<INT>,
     created_at TIMESTAMP,
-    PRIMARY KEY((id), created_at)
+    PRIMARY KEY((room_id, id), created_at)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
 
 

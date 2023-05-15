@@ -76,8 +76,7 @@ func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if join_room_req.ID.String() == "" {
-		http.Error(w, "User not provided", http.StatusBadRequest)
+	if join_room_req.UserID.String() == "" {
 		return
 	}
 
@@ -86,15 +85,25 @@ func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if join_room_req.Username == "" {
+		http.Error(w, "Username not provided", http.StatusBadRequest)
+		return
+	}
+
+	if join_room_req.Email == "" {
+		http.Error(w, "Email not provided", http.StatusBadRequest)
+		return
+	}
+
 	res, err := h.SERVICE.JoinRoom(r.Context(), &join_room_req)
 	if err != nil {
 		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		return
 	}
 
-	// TODO: Return room ?
 	h.Hub.Rooms[res.ID] = res
 
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(res)
 
 }

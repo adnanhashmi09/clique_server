@@ -31,17 +31,18 @@ func (s *Service) CreateRoom(c context.Context, req *CreateRoomReq) (*Room, erro
 	new_channel_id, _ := gocql.RandomUUID()
 	members := []gocql.UUID{(gocql.UUID)(admin_user.ID)}
 	created_at := time.Now()
+	new_room_id, _ := gocql.RandomUUID()
 
 	default_channel := &Channel{
 		ID:              new_channel_id,
 		ChannelName:     "general",
+		Room:            new_room_id,
 		Members:         members,
 		CreatedAt:       created_at,
 		IsDirectChannel: false,
 		Messages:        []int{},
 	}
 
-	new_room_id, _ := gocql.RandomUUID()
 	new_room := &Room{
 		ID:       new_room_id,
 		RoomName: req.RoomName,
@@ -67,12 +68,12 @@ func (s *Service) JoinRoom(c context.Context, req *JoinRoomReq) (*Room, error) {
 	ctx, cancel := context.WithTimeout(c, s.timeout)
 	defer cancel()
 
-	repo, err := s.REPOSITORY.JoinRoom(ctx, req.ID, req.User)
+	room, err := s.REPOSITORY.JoinRoom(ctx, req.ID, req.UserID, req.Username, req.Email)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return repo, nil
+	return room, nil
 
 }
