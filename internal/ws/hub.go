@@ -46,16 +46,23 @@ type JoinOrLeaveRoomReq struct {
 	Email    string     `json:"email"`
 }
 
+type DeleteRoomReq struct {
+	ID     gocql.UUID `json:"room_id"`
+	UserID gocql.UUID `json:"user_id"`
+}
+
 type REPOSITORY interface {
 	CreateRoom(ctx context.Context, room *Room, default_channel *Channel) (*Room, error)
 	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
-	LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) error
+	LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
+	DeleteRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error)
 }
 
 type SERVICE interface {
 	CreateRoom(c context.Context, req *CreateRoomReq) (*Room, error)
 	JoinRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
-	LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) error
+	LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
+	DeleteRoom(c context.Context, req *DeleteRoomReq) (*Room, error)
 }
 
 func NewHub() *Hub {

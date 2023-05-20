@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/adnanhashmi09/clique_server/internal/user"
 	"github.com/adnanhashmi09/clique_server/utils"
 	"github.com/gocql/gocql"
 )
@@ -197,10 +198,10 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
 
 		batch.Entries = append(batch.Entries, gocql.BatchEntry{
 			Stmt: `UPDATE channels 
-           SET members = members + {?} 
-           where room_id=? 
-           AND id=?
-           AND created_at=?`,
+             SET members = members + {?} 
+             where room_id=? 
+             AND id=?
+             AND created_at=?`,
 			Args:       []interface{}{user_id, room_id, key, channels_created_at[key]},
 			Idempotent: true,
 		})
@@ -237,7 +238,7 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
 	return &room, nil
 }
 
-func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) error {
+func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error) {
 
 	// check if user doesn't exist
 	var uid gocql.UUID
@@ -249,10 +250,10 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
             ALLOW FILTERING`,
 		user_id).WithContext(ctx).Scan(&uid); err != nil {
 		if err == gocql.ErrNotFound {
-			return errors.New("User doesn't exist.")
+			return nil, errors.New("User doesn't exist.")
 		} else {
 			log.Println("Error occured while executing query to get if user exists or not in leave room repository function:", err)
-			return errors.New("Server error.")
+			return nil, errors.New("Server error.")
 		}
 	}
 
@@ -267,10 +268,10 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 		room_id).WithContext(ctx).Scan(&room.ID, &room.Admin, &room.CreatedAt, &room.Channels, &room.Members, &room.RoomName); err != nil {
 
 		if err == gocql.ErrNotFound {
-			return errors.New("Room id doesn't exist.")
+			return nil, errors.New("Room id doesn't exist.")
 		} else {
 			log.Println("Error occured while executing query to get if room exists or not in leave room repository function:", err)
-			return errors.New("Server error.")
+			return nil, errors.New("Server error.")
 		}
 	}
 
@@ -288,9 +289,9 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 
 		if err != gocql.ErrNotFound {
 			log.Println("Error occured while executing query to check if user is already in the room in leave room repository function:", err)
-			return errors.New("Server error.")
+			return nil, errors.New("Server error.")
 		} else {
-			return errors.New("User is not a member of the room.")
+			return nil, errors.New("User is not a member of the room.")
 		}
 	}
 
@@ -309,7 +310,7 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 		err := scanner.Scan(&chn.Room, &chn.ID, &chn.CreatedAt, &chn.Members)
 		if err != nil {
 			log.Println("Error while scanning for all the channels in Leave room repository function", err)
-			return errors.New("Server error.")
+			return nil, errors.New("Server error.")
 		}
 
 		channels = append(channels, chn)
@@ -317,7 +318,7 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 
 	if err := scanner.Err(); err != nil {
 		log.Println("Error while closing the scanner. ", err)
-		return errors.New("Server Error")
+		return nil, errors.New("Server Error")
 	}
 
 	// Remove user from the room
@@ -362,8 +363,134 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 	err := r.db.ExecuteBatch(batch)
 	if err != nil {
 		log.Println("Error executing batch statement in leave room: ", err)
-		return errors.New("Server Error.")
+		return nil, errors.New("Server Error.")
 	}
 
-	return nil
+	return &room, nil
+}
+
+func (r *Repository) DeleteRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error) {
+	// check if user is the admin
+	// this also checks if room exists or not
+	var (
+		uid             gocql.UUID
+		room_created_at time.Time
+	)
+	if err := r.db.Query(`
+            SELECT 
+            admin, created_at 
+            FROM rooms 
+            WHERE id=?
+            ALLOW FILTERING`,
+		room_id).WithContext(ctx).Scan(&uid, &room_created_at); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Room doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if user is admin or not in delete room repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+	}
+
+	if uid != user_id {
+		return nil, errors.New("User is not the admin of this room.")
+	}
+
+	// Get channels data
+	var chn Channel
+	var channels []Channel
+	scanner := r.db.Query(`
+             SELECT 
+             room_id, id, created_at, members 
+             FROM channels 
+             WHERE room_id=?
+             ALLOW FILTERING    
+    `, room_id).WithContext(ctx).Iter().Scanner()
+
+	for scanner.Next() {
+		err := scanner.Scan(&chn.Room, &chn.ID, &chn.CreatedAt, &chn.Members)
+		if err != nil {
+			log.Println("Error while scanning for all the channels in delete room repository function", err)
+			return nil, errors.New("Server error.")
+		}
+
+		channels = append(channels, chn)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Println("Error while closing the scanner. ", err)
+		return nil, errors.New("Server Error")
+	}
+
+	// Get users data
+	var usr user.User
+	var users []user.User
+	scanner = r.db.Query(`
+             SELECT 
+             id, username, email, rooms 
+             FROM users 
+             WHERE rooms CONTAINS ? 
+             ALLOW FILTERING    
+    `, room_id).WithContext(ctx).Iter().Scanner()
+
+	for scanner.Next() {
+		err := scanner.Scan(&usr.ID, &usr.Username, &usr.Email, &usr.Rooms)
+		if err != nil {
+			log.Println("Error while scanning for all the users in a room in delete room repository function", err)
+			return nil, errors.New("Server error.")
+		}
+
+		users = append(users, usr)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Println("Error while closing the scanner. ", err)
+		return nil, errors.New("Server Error")
+	}
+
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+
+	// Delete all the channels belonging to the room
+	for _, channel := range channels {
+		batch.Entries = append(batch.Entries, gocql.BatchEntry{
+			Stmt: `DELETE 
+             FROM channels
+	           where room_id=?
+	           AND id=?
+	           AND created_at=?`,
+			Args:       []interface{}{room_id, channel.ID, channel.CreatedAt},
+			Idempotent: true,
+		})
+	}
+
+	// Delete the room from rooms table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `DELETE 
+           FROM rooms
+	         where id=?
+	         AND admin=?
+	         AND created_at=?`,
+		Args:       []interface{}{room_id, user_id, room_created_at},
+		Idempotent: true,
+	})
+
+	// Delete rooms from the users table -> Update the users rooms column
+	for _, u := range users {
+		batch.Entries = append(batch.Entries, gocql.BatchEntry{
+			Stmt: `UPDATE users 
+             SET rooms = rooms - {?} 
+             where id=?
+             AND username=?
+             AND email=?`,
+			Args:       []interface{}{room_id, u.ID, u.Username, u.Email},
+			Idempotent: true,
+		})
+	}
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in delete room: ", err)
+		return nil, errors.New("Server Error.")
+	}
+
+	return &Room{ID: room_id}, nil
 }

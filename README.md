@@ -50,3 +50,4 @@ go run cmd/main.go
 - `localhost:5050/chat/create_room`
 - `localhost:5050/chat/join_room`
 - `localhost:5050/chat/leave_room`
+- `localhost:5050/chat/delete_room`

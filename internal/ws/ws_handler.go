@@ -77,6 +77,7 @@ func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if join_room_req.UserID.String() == "" {
+		http.Error(w, "UserID not provided", http.StatusBadRequest)
 		return
 	}
 
@@ -127,6 +128,7 @@ func (h *Handler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if leave_room_req.UserID.String() == "" {
+		http.Error(w, "UserID not provided", http.StatusBadRequest)
 		return
 	}
 
@@ -145,14 +147,54 @@ func (h *Handler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.SERVICE.LeaveRoom(r.Context(), &leave_room_req)
+	res, err := h.SERVICE.LeaveRoom(r.Context(), &leave_room_req)
 	if err != nil {
 		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	// h.Hub.Rooms[res.ID] = res
+	h.Hub.Rooms[res.ID] = res
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode("You are no longer the member of the room")
+}
+
+func (h *Handler) DeleteRoom(w http.ResponseWriter, r *http.Request) {
+
+	var delete_room_req DeleteRoomReq
+
+	body, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(body, &delete_room_req)
+	if err != nil {
+		http.Error(w, "Error unmarshalling the request body", http.StatusBadRequest)
+		return
+	}
+
+	if delete_room_req.UserID.String() == "" {
+		http.Error(w, "UserID not provided", http.StatusBadRequest)
+		return
+	}
+
+	if delete_room_req.ID.String() == "" {
+		http.Error(w, "RoomID not provided", http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.SERVICE.DeleteRoom(r.Context(), &delete_room_req)
+	if err != nil {
+		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	delete(h.Hub.Rooms, res.ID)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("The room is successfully deleted.")
 }

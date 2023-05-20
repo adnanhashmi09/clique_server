@@ -78,16 +78,29 @@ func (s *Service) JoinRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, e
 
 }
 
-func (s *Service) LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) error {
+func (s *Service) LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error) {
 	ctx, cancel := context.WithTimeout(c, s.timeout)
 	defer cancel()
 
-	err := s.REPOSITORY.LeaveRoom(ctx, req.ID, req.UserID, req.Username, req.Email)
+	room, err := s.REPOSITORY.LeaveRoom(ctx, req.ID, req.UserID, req.Username, req.Email)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return room, nil
 
+}
+
+func (s *Service) DeleteRoom(c context.Context, req *DeleteRoomReq) (*Room, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	room, err := s.REPOSITORY.DeleteRoom(ctx, req.ID, req.UserID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return room, nil
 }
