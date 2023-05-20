@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/adnanhashmi09/clique_server/utils"
 	"github.com/gocql/gocql"
 )
 
@@ -100,7 +101,6 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 	return room, nil
 }
 
-// TODO: FINISH this function
 func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error) {
 
 	// check if user doesn't exist
@@ -230,4 +230,134 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
 	}
 
 	return &room, nil
+}
+
+func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) error {
+
+	// check if user doesn't exist
+	var uid gocql.UUID
+	if err := r.db.Query(`
+            SELECT 
+            id 
+            FROM users 
+            WHERE id=?
+            ALLOW FILTERING`,
+		user_id).WithContext(ctx).Scan(&uid); err != nil {
+		if err == gocql.ErrNotFound {
+			return errors.New("User doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if user exists or not in leave room repository function:", err)
+			return errors.New("Server error.")
+		}
+	}
+
+	// check if room doesn't exist
+	var room Room
+	if err := r.db.Query(`
+            SELECT 
+            * 
+            FROM rooms 
+            WHERE id=?
+            ALLOW FILTERING`,
+		room_id).WithContext(ctx).Scan(&room.ID, &room.Admin, &room.CreatedAt, &room.Channels, &room.Members, &room.RoomName); err != nil {
+
+		if err == gocql.ErrNotFound {
+			return errors.New("Room id doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if room exists or not in leave room repository function:", err)
+			return errors.New("Server error.")
+		}
+	}
+
+	// check if user is`not a member of room
+	var uid_mem string
+	if err := r.db.Query(`
+            SELECT 
+            id 
+            FROM users 
+            WHERE id=?
+            AND
+            rooms CONTAINS ?
+            ALLOW FILTERING`,
+		user_id, room_id).WithContext(ctx).Scan(&uid_mem); err != nil {
+
+		if err != gocql.ErrNotFound {
+			log.Println("Error occured while executing query to check if user is already in the room in leave room repository function:", err)
+			return errors.New("Server error.")
+		} else {
+			return errors.New("User is not a member of the room.")
+		}
+	}
+
+	// Get channels data
+	var chn Channel
+	var channels []Channel
+	scanner := r.db.Query(`
+             SELECT 
+             room_id, id, created_at, members 
+             FROM channels 
+             WHERE room_id=?
+             ALLOW FILTERING    
+    `, room_id).WithContext(ctx).Iter().Scanner()
+
+	for scanner.Next() {
+		err := scanner.Scan(&chn.Room, &chn.ID, &chn.CreatedAt, &chn.Members)
+		if err != nil {
+			log.Println("Error while scanning for all the channels in Leave room repository function", err)
+			return errors.New("Server error.")
+		}
+
+		channels = append(channels, chn)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Println("Error while closing the scanner. ", err)
+		return errors.New("Server Error")
+	}
+	// Remove user from the room
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+
+	for _, channel := range channels {
+		// 1. Remove user from all the channels in the room
+		batch.Entries = append(batch.Entries, gocql.BatchEntry{
+			Stmt: `UPDATE channels
+	           SET members = members - {?}
+	           where room_id=?
+	           AND id=?
+	           AND created_at=?`,
+			Args:       []interface{}{user_id, room_id, channel.ID, channel.CreatedAt},
+			Idempotent: true,
+		})
+
+		// 2. Remove user from the room  table
+		room.Members[channel.ID] = utils.RemoveElementFromArray(room.Members[channel.ID], user_id)
+		batch.Entries = append(batch.Entries, gocql.BatchEntry{
+			Stmt: `UPDATE rooms
+             SET members[?] = ?
+	           where id=?
+	           AND admin=?
+	           AND created_at=?`,
+			Args:       []interface{}{channel.ID, room.Members[channel.ID], room_id, room.Admin, room.CreatedAt},
+			Idempotent: true,
+		})
+	}
+
+	// 3. Remove room from the users table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE users
+	         SET rooms = rooms - {?}
+	         where id=?
+	         AND username=?
+	         AND email=?`,
+		Args:       []interface{}{room_id, user_id, username, email},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in leave room: ", err)
+		return errors.New("Server Error.")
+	}
+
+	return nil
 }

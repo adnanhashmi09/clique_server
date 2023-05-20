@@ -60,7 +60,7 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
-	var join_room_req JoinRoomReq
+	var join_room_req JoinOrLeaveRoomReq
 
 	body, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
@@ -106,4 +106,53 @@ func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(res)
 
+}
+
+func (h *Handler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
+
+	var leave_room_req JoinOrLeaveRoomReq
+
+	body, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(body, &leave_room_req)
+	if err != nil {
+		http.Error(w, "Error unmarshalling the request body", http.StatusBadRequest)
+		return
+	}
+
+	if leave_room_req.UserID.String() == "" {
+		return
+	}
+
+	if leave_room_req.ID.String() == "" {
+		http.Error(w, "RoomID not provided", http.StatusBadRequest)
+		return
+	}
+
+	if leave_room_req.Username == "" {
+		http.Error(w, "Username not provided", http.StatusBadRequest)
+		return
+	}
+
+	if leave_room_req.Email == "" {
+		http.Error(w, "Email not provided", http.StatusBadRequest)
+		return
+	}
+
+	err = h.SERVICE.LeaveRoom(r.Context(), &leave_room_req)
+	if err != nil {
+		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// h.Hub.Rooms[res.ID] = res
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("You are no longer the member of the room")
 }

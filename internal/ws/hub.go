@@ -39,7 +39,7 @@ type CreateRoomReq struct {
 	Admin    gocql.UUID `json:"admin"`
 }
 
-type JoinRoomReq struct {
+type JoinOrLeaveRoomReq struct {
 	ID       gocql.UUID `json:"room_id"`
 	UserID   gocql.UUID `json:"user_id"`
 	Username string     `json:"username"`
@@ -49,11 +49,13 @@ type JoinRoomReq struct {
 type REPOSITORY interface {
 	CreateRoom(ctx context.Context, room *Room, default_channel *Channel) (*Room, error)
 	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
+	LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) error
 }
 
 type SERVICE interface {
 	CreateRoom(c context.Context, req *CreateRoomReq) (*Room, error)
-	JoinRoom(c context.Context, req *JoinRoomReq) (*Room, error)
+	JoinRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
+	LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) error
 }
 
 func NewHub() *Hub {
