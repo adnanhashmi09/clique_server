@@ -44,6 +44,9 @@ go run cmd/main.go
 
 ## Endpoints
 
-`localhost:5050/auth/signup`
-`localhost:5050/auth/login`
-`localhost:5050/auth/logout`
+- `localhost:5050/auth/signup`
+- `localhost:5050/auth/login`
+- `localhost:5050/auth/logout`
+- `localhost:5050/chat/create_room`
+- `localhost:5050/chat/join_room`
+- `localhost:5050/chat/leave_room`
