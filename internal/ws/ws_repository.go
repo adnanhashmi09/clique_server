@@ -161,45 +161,52 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
 		return nil, errors.New("User is already a member of the room.")
 	}
 
-	// Get the channel id of general channel
+	// Get the channel id and created_at of all channels in the room
 	var (
-		chn_id             gocql.UUID
-		channel_created_at time.Time
+		chn_id              gocql.UUID
+		channel_created_at  time.Time
+		channels_created_at map[gocql.UUID]time.Time
 	)
-	if err := r.db.Query(`
+
+	channels_created_at = make(map[gocql.UUID]time.Time)
+
+	scanner := r.db.Query(`
             SELECT 
             id, created_at 
             FROM channels 
             WHERE room_id=?
-            AND
-            channel_name='general'
             ALLOW FILTERING`,
-		room_id).WithContext(ctx).Scan(&chn_id, &channel_created_at); err != nil {
-		if err == gocql.ErrNotFound {
-			return nil, errors.New("Channel id doesn't exist.")
-		} else {
+		room_id).WithContext(ctx).Iter().Scanner()
+
+	for scanner.Next() {
+		err := scanner.Scan(&chn_id, &channel_created_at)
+		if err != nil {
 			log.Println("Error occured while executing query to get general channel id in join room repository function:", err)
 			return nil, errors.New("Server error.")
 		}
+		channels_created_at[chn_id] = channel_created_at
 	}
 
 	// Add user to the room
-	// 1. Add user to general channel -> Update channel table
 	batch := r.db.NewBatch(gocql.LoggedBatch)
 
-	batch.Entries = append(batch.Entries, gocql.BatchEntry{
-		Stmt: `UPDATE channels 
+	// 1. Add user to all the channels -> Update channel table
+	for key, chn := range room.Members {
+		chn = append(chn, user_id)
+		room.Members[key] = chn
+
+		batch.Entries = append(batch.Entries, gocql.BatchEntry{
+			Stmt: `UPDATE channels 
            SET members = members + {?} 
            where room_id=? 
            AND id=?
            AND created_at=?`,
-		Args:       []interface{}{user_id, room_id, chn_id, channel_created_at},
-		Idempotent: true,
-	})
+			Args:       []interface{}{user_id, room_id, key, channels_created_at[key]},
+			Idempotent: true,
+		})
+	}
 
 	// 2. Update Rooms table
-	room.Members[chn_id] = append(room.Members[chn_id], user_id)
-
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
 		Stmt: `UPDATE rooms 
            SET members=? 
@@ -209,8 +216,6 @@ func (r *Repository) JoinRoom(ctx context.Context, room_id gocql.UUID, user_id g
 		Args:       []interface{}{room.Members, room_id, room.Admin, room.CreatedAt},
 		Idempotent: true,
 	})
-
-	room.Members[chn_id] = append(room.Members[chn_id], user_id)
 
 	// 3. Update users table
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
@@ -314,6 +319,7 @@ func (r *Repository) LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id 
 		log.Println("Error while closing the scanner. ", err)
 		return errors.New("Server Error")
 	}
+
 	// Remove user from the room
 	batch := gocql.NewBatch(gocql.LoggedBatch)
 
