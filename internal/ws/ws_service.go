@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/adnanhashmi09/clique_server/internal/user"
@@ -97,6 +98,31 @@ func (s *Service) DeleteRoom(c context.Context, req *DeleteRoomReq) (*Room, erro
 	defer cancel()
 
 	room, err := s.REPOSITORY.DeleteRoom(ctx, req.ID, req.UserID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return room, nil
+}
+
+func (s *Service) CreateChannel(c context.Context, req *CreateChannelReq) (*Room, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	created_at := time.Now()
+	new_channel_id, _ := gocql.RandomUUID()
+
+	new_channel := Channel{
+		ID:              new_channel_id,
+		ChannelName:     req.ChannelName,
+		Room:            req.RoomID,
+		IsDirectChannel: false,
+		CreatedAt:       created_at,
+	}
+
+	log.Println(req.Admin)
+	room, err := s.REPOSITORY.CreateChannel(ctx, &new_channel, req.Admin)
 
 	if err != nil {
 		return nil, err

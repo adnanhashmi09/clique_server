@@ -494,3 +494,76 @@ func (r *Repository) DeleteRoom(ctx context.Context, room_id gocql.UUID, user_id
 
 	return &Room{ID: room_id}, nil
 }
+
+func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID) (*Room, error) {
+
+	// check if room exists and
+	// admin given is actually the
+	// admin of the room
+	var room Room
+
+	if err := r.db.Query(`
+            SELECT 
+            * 
+            FROM rooms 
+            WHERE id=?
+            ALLOW FILTERING`,
+		new_channel.Room).WithContext(ctx).Scan(&room.ID, &room.Admin, &room.CreatedAt, &room.Channels, &room.Members, &room.RoomName); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Room doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if user is admin or not in create channel repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+	}
+
+	// log.Println(room.Admin)
+	// log.Println(admin)
+
+	if room.Admin != admin {
+		return nil, errors.New("User is not the admin of this room.")
+	}
+
+	// update members in new_channel with the members of any channel in the room
+	for _, value := range room.Members {
+		new_channel.Members = value
+		break
+	}
+
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+
+	// create a channel in the channels table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `INSERT 
+           INTO channels 
+           (id, channel_name, room_id, is_direct_channel, members, created_at, messages) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		Args: []interface{}{new_channel.ID, new_channel.ChannelName, new_channel.Room, new_channel.IsDirectChannel,
+			new_channel.Members, new_channel.CreatedAt, new_channel.Messages},
+		Idempotent: true,
+	})
+
+	// update the channels set and members map
+	// in rooms table
+	room.Channels = append(room.Channels, new_channel.ID)
+	room.Members[new_channel.ID] = new_channel.Members
+
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE rooms
+           SET channels = channels + {?}, 
+           members=?
+           where id=?
+           AND admin=?
+           AND created_at=?`,
+		Args:       []interface{}{new_channel.ID, room.Members, room.ID, room.Admin, room.CreatedAt},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in create channel: ", err)
+		return nil, errors.New("Server Error.")
+	}
+
+	return &room, nil
+}

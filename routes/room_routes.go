@@ -10,6 +10,6 @@ func RoomRoutes(r chi.Router, wsHandler *ws.Handler) {
 	r.Post("/join_room", wsHandler.JoinRoom)
 	r.Post("/leave_room", wsHandler.LeaveRoom)
 	r.Post("/delete_room", wsHandler.DeleteRoom)
-	// r.Post("/create_channel", wsHandler.CreateChannel)
+	r.Post("/create_channel", wsHandler.CreateChannel)
 	// r.Post("/delete_channel", wsHandler.DeleteChannel)
 }
