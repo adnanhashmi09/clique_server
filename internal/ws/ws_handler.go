@@ -244,3 +244,48 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 
 }
+
+func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
+	var delete_channel_req DeleteChannelReq
+
+	body, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(body, &delete_channel_req)
+
+	if err != nil {
+		http.Error(w, "Error unmarshalling the request body", http.StatusBadRequest)
+		return
+	}
+
+	if delete_channel_req.RoomID.String() == "" {
+		http.Error(w, "Room ID not provided", http.StatusBadRequest)
+		return
+	}
+
+	if delete_channel_req.Admin.String() == "" {
+		http.Error(w, "Admin ID not provided", http.StatusBadRequest)
+		return
+	}
+
+	if delete_channel_req.ChannelID.String() == "" {
+		http.Error(w, "Channel name not provided", http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.SERVICE.DeleteChannel(r.Context(), &delete_channel_req)
+	if err != nil {
+		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	h.Hub.Rooms[res.ID] = res
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(res)
+}

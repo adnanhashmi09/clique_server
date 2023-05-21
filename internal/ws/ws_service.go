@@ -130,3 +130,23 @@ func (s *Service) CreateChannel(c context.Context, req *CreateChannelReq) (*Room
 
 	return room, nil
 }
+
+func (s *Service) DeleteChannel(c context.Context, req *DeleteChannelReq) (*Room, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	new_channel := Channel{
+		ID:              req.ChannelID,
+		Room:            req.RoomID,
+		IsDirectChannel: false,
+	}
+
+	log.Println(req.Admin)
+	room, err := s.REPOSITORY.DeleteChannel(ctx, &new_channel, req.Admin)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return room, nil
+}

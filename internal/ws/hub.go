@@ -52,6 +52,12 @@ type CreateChannelReq struct {
 	ChannelName string     `json:"channel_name"`
 }
 
+type DeleteChannelReq struct {
+	RoomID    gocql.UUID `json:"room_id"`
+	Admin     gocql.UUID `json:"admin"`
+	ChannelID gocql.UUID `json:"channel_id"`
+}
+
 type DeleteRoomReq struct {
 	ID     gocql.UUID `json:"room_id"`
 	UserID gocql.UUID `json:"user_id"`
@@ -63,6 +69,7 @@ type REPOSITORY interface {
 	LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
 	DeleteRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error)
 	CreateChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID) (*Room, error)
+	DeleteChannel(ctx context.Context, chn *Channel, admin gocql.UUID) (*Room, error)
 }
 
 type SERVICE interface {
@@ -71,6 +78,7 @@ type SERVICE interface {
 	LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
 	DeleteRoom(c context.Context, req *DeleteRoomReq) (*Room, error)
 	CreateChannel(c context.Context, req *CreateChannelReq) (*Room, error)
+	DeleteChannel(c context.Context, req *DeleteChannelReq) (*Room, error)
 }
 
 func NewHub() *Hub {

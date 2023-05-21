@@ -517,9 +517,6 @@ func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, ad
 		}
 	}
 
-	// log.Println(room.Admin)
-	// log.Println(admin)
-
 	if room.Admin != admin {
 		return nil, errors.New("User is not the admin of this room.")
 	}
@@ -562,6 +559,91 @@ func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, ad
 	err := r.db.ExecuteBatch(batch)
 	if err != nil {
 		log.Println("Error executing batch statement in create channel: ", err)
+		return nil, errors.New("Server Error.")
+	}
+
+	return &room, nil
+}
+
+func (r *Repository) DeleteChannel(ctx context.Context, chn *Channel, admin gocql.UUID) (*Room, error) {
+
+	// check if room exists and
+	// admin given is actually the
+	// admin of the room
+	var room Room
+
+	if err := r.db.Query(`
+            SELECT 
+            * 
+            FROM rooms 
+            WHERE id=?
+            ALLOW FILTERING`,
+		chn.Room).WithContext(ctx).Scan(&room.ID, &room.Admin, &room.CreatedAt, &room.Channels, &room.Members, &room.RoomName); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Room doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if user is admin or not in delete channel repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+	}
+
+	if room.Admin != admin {
+		return nil, errors.New("User is not the admin of this room.")
+	}
+
+	// check if channel exists or not
+	var chn_created_at time.Time
+
+	if err := r.db.Query(`
+            SELECT 
+            created_at 
+            FROM channels 
+            WHERE id=?
+            ALLOW FILTERING`,
+		chn.ID).WithContext(ctx).Scan(&chn_created_at); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, errors.New("Channel doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to get if channel exists or not in delete channel repository function:", err)
+			return nil, errors.New("Server error.")
+		}
+	}
+
+	if room.Admin != admin {
+		return nil, errors.New("User is not the admin of this room.")
+	}
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+
+	// delete the channel in the channels table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `DELETE
+           FROM channels
+           WHERE id=?
+           AND room_id=?
+           AND created_at=?`,
+		Args:       []interface{}{chn.ID, chn.Room, chn_created_at},
+		Idempotent: true,
+	})
+
+	// remove the chn.ID from room.Members and
+	// room.channels
+	room.Channels = utils.RemoveElementFromArray(room.Channels, chn.ID)
+	delete(room.Members, chn.ID)
+
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE rooms
+           SET channels = channels - {?}, 
+           members=?
+           where id=?
+           AND admin=?
+           AND created_at=?`,
+		Args:       []interface{}{chn.ID, room.Members, room.ID, room.Admin, room.CreatedAt},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in delete channel: ", err)
 		return nil, errors.New("Server Error.")
 	}
 
