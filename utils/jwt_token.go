@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -12,11 +13,8 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-const (
-	secretKey = "secret"
-)
-
 func Generate_JWT_Token(id string, username string) (string, error) {
+	secretKey := []byte(Get_Env_Variable("SECRET"))
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomClaims{
 		ID:       id,
 		Username: username,
@@ -32,4 +30,19 @@ func Generate_JWT_Token(id string, username string) (string, error) {
 	}
 
 	return ss, err
+}
+
+func Verify_JWT_Token(token_value string) (*CustomClaims, error) {
+	token, err := jwt.ParseWithClaims(token_value, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		secretKey := []byte(Get_Env_Variable("SECRET"))
+		return secretKey, nil
+	})
+
+	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
+		log.Printf("%v %v", claims, claims.RegisteredClaims.Issuer)
+		return claims, nil
+	} else {
+		log.Println(err)
+		return nil, err
+	}
 }

@@ -30,6 +30,7 @@ func RouterInit(userHandler *user.Handler, wsHandler *ws.Handler) http.Handler {
 	})
 
 	r.Route("/chat", func(r chi.Router) {
+		r.Use(verify_jwt)
 		RoomRoutes(r, wsHandler)
 	})
 

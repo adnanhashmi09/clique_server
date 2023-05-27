@@ -124,6 +124,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		Secure:   false,
 		MaxAge:   -1,
 	}
+
 	http.SetCookie(w, cookie)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
