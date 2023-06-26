@@ -19,6 +19,74 @@ func NewRepository(db *gocql.Session) REPOSITORY {
 	return &Repository{db: db}
 }
 
+func (r *Repository) FetchAllRooms() (map[gocql.UUID]*Room, error) {
+	roomQuery := "SELECT id, room_name, channels, members, created_at, admin FROM rooms"
+	roomIter := r.db.Query(roomQuery).Iter()
+
+	roomMap := make(map[gocql.UUID]*Room)
+
+	var roomID gocql.UUID
+	var roomName string
+	var channels []gocql.UUID
+	var members map[gocql.UUID][]gocql.UUID
+	var createdAt time.Time
+	var admin gocql.UUID
+
+	for roomIter.Scan(&roomID, &roomName, &channels, &members, &createdAt, &admin) {
+		room := &Room{
+			ID:         roomID,
+			RoomName:   roomName,
+			Channels:   channels,
+			Members:    members,
+			CreatedAt:  createdAt,
+			Admin:      admin,
+			ChannelMap: make(map[gocql.UUID]*Channel),
+		}
+
+		roomMap[roomID] = room
+	}
+
+	if err := roomIter.Close(); err != nil {
+		log.Println("err here")
+		return nil, err
+	}
+
+	// Fetch channels for each room and populate ChannelMap
+	channelQuery := "SELECT id, channel_name, room_id, members, is_direct_channel, created_at FROM channels WHERE room_id = ? ALLOW FILTERING"
+	channelStmt := r.db.Query(channelQuery)
+
+	for roomID, room := range roomMap {
+		channelIter := channelStmt.Bind(roomID).Iter()
+
+		var channelID gocql.UUID
+		var channelName string
+		var roomID gocql.UUID
+		var channelMembers []gocql.UUID
+		var isDirectChannel bool
+		var createdAt time.Time
+
+		for channelIter.Scan(&channelID, &channelName, &roomID, &channelMembers, &isDirectChannel, &createdAt) {
+			channel := &Channel{
+				ID:              channelID,
+				ChannelName:     channelName,
+				Room:            roomID,
+				Members:         channelMembers,
+				IsDirectChannel: isDirectChannel,
+				CreatedAt:       createdAt,
+				Clients:         make(map[gocql.UUID]*Client),
+			}
+
+			room.ChannelMap[channelID] = channel
+		}
+
+		if err := channelIter.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	return roomMap, nil
+}
+
 func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel *Channel) (*Room, error) {
 
 	// Check if admin exists or not
@@ -78,10 +146,10 @@ func (r *Repository) CreateRoom(ctx context.Context, room *Room, default_channel
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
 		Stmt: `INSERT 
            INTO channels 
-           (id, channel_name, room_id, is_direct_channel, members, created_at, messages) 
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (id, channel_name, room_id, is_direct_channel, members, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
 		Args: []interface{}{default_channel.ID, default_channel.ChannelName, default_channel.Room, default_channel.IsDirectChannel,
-			default_channel.Members, default_channel.CreatedAt, default_channel.Messages},
+			default_channel.Members, default_channel.CreatedAt},
 		Idempotent: true,
 	})
 
@@ -533,10 +601,10 @@ func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, ad
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
 		Stmt: `INSERT 
            INTO channels 
-           (id, channel_name, room_id, is_direct_channel, members, created_at, messages) 
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (id, channel_name, room_id, is_direct_channel, members, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
 		Args: []interface{}{new_channel.ID, new_channel.ChannelName, new_channel.Room, new_channel.IsDirectChannel,
-			new_channel.Members, new_channel.CreatedAt, new_channel.Messages},
+			new_channel.Members, new_channel.CreatedAt},
 		Idempotent: true,
 	})
 
@@ -544,6 +612,7 @@ func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, ad
 	// in rooms table
 	room.Channels = append(room.Channels, new_channel.ID)
 	room.Members[new_channel.ID] = new_channel.Members
+	room.ChannelMap[new_channel.ID] = new_channel
 
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
 		Stmt: `UPDATE rooms
@@ -563,6 +632,97 @@ func (r *Repository) CreateChannel(ctx context.Context, new_channel *Channel, ad
 	}
 
 	return &room, nil
+}
+
+func (r *Repository) CreateDirectChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID, reciever string) (gocql.UUID, *Channel, error) {
+	room_id := gocql.UUID{}
+	var created_at time.Time
+
+	if err := r.db.Query(`
+            SELECT 
+            created_at 
+            FROM rooms 
+            WHERE id=?
+            ALLOW FILTERING`,
+		room_id).WithContext(ctx).Scan(&created_at); err != nil {
+		if err == gocql.ErrNotFound {
+			return gocql.UUID{}, nil, errors.New("Room doesn't exist.")
+		} else {
+			log.Println("Error occured while trying to get created_at in createDirectChannel repo function.", err)
+			return gocql.UUID{}, nil, errors.New("Server error.")
+		}
+	}
+
+	// ceck whether sender id is legit or not
+	var sender_id gocql.UUID
+
+	if err := r.db.Query(`
+           SELECT
+           id
+           FROM users
+           where id=?
+           ALLOW FILTERING
+    `, new_channel.Members[0]).WithContext(ctx).Scan(&sender_id); err != nil {
+
+		if err == gocql.ErrNotFound {
+			return gocql.UUID{}, nil, errors.New("Receiver doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to check if user is legit or not in CreateDirectChannel repository function:", err)
+			return gocql.UUID{}, nil, errors.New("Server error.")
+		}
+	}
+
+	// check whether reciever username is legit or not
+	var reciever_id gocql.UUID
+
+	if err := r.db.Query(`
+           SELECT
+           id
+           FROM users
+           where username=?
+           ALLOW FILTERING
+    `, reciever).WithContext(ctx).Scan(&reciever_id); err != nil {
+
+		if err == gocql.ErrNotFound {
+			return gocql.UUID{}, nil, errors.New("Receiver doesn't exist.")
+		} else {
+			log.Println("Error occured while executing query to check if reciever username is legit or not in CreateDirectChannel repository function:", err)
+			return gocql.UUID{}, nil, errors.New("Server error.")
+		}
+	}
+
+	new_channel.Members = append(new_channel.Members, reciever_id)
+
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+
+	// create a channel in the channels table
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `INSERT 
+           INTO channels 
+           (id, channel_name, room_id, is_direct_channel, members, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+		Args: []interface{}{new_channel.ID, new_channel.ChannelName, new_channel.Room, new_channel.IsDirectChannel,
+			new_channel.Members, new_channel.CreatedAt},
+		Idempotent: true,
+	})
+
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE rooms SET channels = channels + {?}, 
+           members=?
+           where id=?
+           AND admin=?
+           AND created_at=?`,
+		Args:       []interface{}{new_channel.ID, nil, room_id, room_id, created_at},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in create channel: ", err)
+		return gocql.UUID{}, nil, errors.New("Server Error.")
+	}
+
+	return room_id, new_channel, nil
 }
 
 func (r *Repository) DeleteChannel(ctx context.Context, chn *Channel, admin gocql.UUID) (*Room, error) {
@@ -628,6 +788,7 @@ func (r *Repository) DeleteChannel(ctx context.Context, chn *Channel, admin gocq
 	// remove the chn.ID from room.Members and
 	// room.channels
 	room.Channels = utils.RemoveElementFromArray(room.Channels, chn.ID)
+	delete(room.ChannelMap, chn.ID)
 	delete(room.Members, chn.ID)
 
 	batch.Entries = append(batch.Entries, gocql.BatchEntry{
@@ -648,4 +809,82 @@ func (r *Repository) DeleteChannel(ctx context.Context, chn *Channel, admin gocq
 	}
 
 	return &room, nil
+}
+
+func (r *Repository) WriteMessageToDB(ctx context.Context, msg *Message) error {
+
+	log.Printf("message: %+v\n", msg)
+	batch := r.db.NewBatch(gocql.LoggedBatch).WithContext(ctx)
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `INSERT 
+           INTO messages 
+           (channel_id, sender_id, room_id, content, timestamp, type) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+		Args:       []interface{}{msg.ChannelID, msg.SenderID, msg.RoomID, msg.Content, msg.Timestamp, msg.Type},
+		Idempotent: true,
+	})
+
+	err := r.db.ExecuteBatch(batch)
+	if err != nil {
+		log.Println("Error executing batch statement in WriteMessageToDB: ", err)
+		return errors.New("Server Error.")
+	}
+
+	return nil
+}
+
+func (r *Repository) CheckChannelMembership(ctx context.Context, roomID, channelID, userID gocql.UUID) (bool, error) {
+
+	query := "SELECT members FROM channels WHERE room_id = ? AND id = ? ALLOW FILTERING"
+	var members []gocql.UUID
+	if err := r.db.Query(query, roomID, channelID).Scan(&members); err != nil {
+		if err == gocql.ErrNotFound {
+			return false, nil // Channel or room not found
+		}
+		return false, err
+	}
+
+	// Check if the user is a member of the channel
+	for _, memberID := range members {
+		if memberID == userID {
+			return true, nil // User is a member of the channel
+		}
+	}
+
+	return false, nil // User is not a member of the channel
+}
+
+func (r *Repository) CheckIfChannelExists(ctx context.Context, req *CreateDirectChannelReq) (*Channel, error) {
+	query := "SELECT id from users where username=? ALLOW FILTERING"
+	var uid gocql.UUID
+
+	if err := r.db.Query(query, req.Reciever).WithContext(ctx).Scan(&uid); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, nil //user not found
+		}
+		return nil, err
+	}
+
+	query = `
+          SELECT 
+          id, channel_name, room_id, members, 
+          is_direct_channel, created_at 
+          FROM channels 
+          WHERE room_id = ? 
+          AND members 
+          CONTAINS ? AND members CONTAINS ?
+          ALLOW FILTERING
+          `
+	channel := &Channel{}
+	if err := r.db.Query(query, gocql.UUID{}, req.Sender, uid).Scan(
+		&channel.ID, &channel.ChannelName, &channel.Room, &channel.Members,
+		&channel.IsDirectChannel, &channel.CreatedAt,
+	); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, nil //user not found
+		}
+		return nil, err
+	}
+
+	return channel, nil
 }

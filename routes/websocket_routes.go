@@ -1,34 +1,66 @@
 package routes
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"log"
+
 	"github.com/adnanhashmi09/clique_server/internal/ws"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/gorilla/websocket"
 )
 
-func WSRoutes(r chi.Router, wsHandler *ws.Handler) {
-	// r.Post("/create_room", wsHandler.CreateRoom)
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		// origin := r.Header.Get("Origin")
+		// return origin == "http://localhost:3000"
+		return true
+	},
 }
 
-// func handleWsConnection(ws *websocket.Conn) {
-// 	log.Println("new incoming connection from client: ", ws.RemoteAddr())
-// 	readLoop(ws)
-// }
+func WSRoutes(r chi.Router, wsHandler *ws.Handler) {
+	r.Get("/join_channel/{channel_id}", wsHandler.JoinChannel)
+	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 
-// func readLoop(ws *websocket.Conn) {
-// 	buf := make([]byte, 1024)
+		json.NewEncoder(w).Encode("PONG")
+	})
 
-// 	for {
-// 		n, err := ws.Read(buf)
-// 		if err != nil {
-// 			if err == io.EOF {
-// 				break
-// 			}
+	r.Post("/create_direct_channel", wsHandler.CreateDirectChannel)
 
-// 			log.Println("Error: ", err)
-// 		}
+	r.Get("/test/{id}", func(w http.ResponseWriter, r *http.Request) {
 
-// 		msg := buf[:n]
-// 		log.Println(string(msg))
-// 		ws.Write([]byte("Thank you for sending a message :)"))
-// 	}
-// }
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println("Error upgrading connection to websockets. ", err)
+			http.Error(w, fmt.Sprintln("Cannot establish a websocket connection."), http.StatusInternalServerError)
+			return
+		}
+		handleWsConnection((conn))
+	})
+}
+
+func handleWsConnection(ws *websocket.Conn) {
+	log.Println("new incoming connection from client: ", ws.RemoteAddr())
+	readLoop(ws)
+}
+
+func readLoop(ws *websocket.Conn) {
+
+	for {
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("error in websocket hub readMessage function: %v", err)
+			}
+			break
+		}
+
+		log.Println(string(msg))
+		ws.WriteJSON([]byte("Thank you for sending a message :)"))
+	}
+}

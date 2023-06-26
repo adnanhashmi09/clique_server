@@ -24,10 +24,16 @@ CREATE TABLE IF NOT EXISTS channels (
 
 
 CREATE TABLE IF NOT EXISTS messages (
-    id INT,
     channel_id UUID,
     sender_id UUID,
+    room_id UUID, 
     content TEXT,
     timestamp TIMESTAMP,
-    PRIMARY KEY((channel_id, sender_id, id), timestamp)
+    type TEXT,
+    PRIMARY KEY((channel_id), timestamp)
 ) WITH CLUSTERING ORDER BY (timestamp DESC);
+
+
+INSERT INTO rooms (id, room_name, channels, members, created_at, admin)
+VALUES (00000000-0000-0000-0000-000000000000, '', null, null, toTimestamp(now()), 00000000-0000-0000-0000-000000000000);
+

@@ -41,7 +41,6 @@ func (s *Service) CreateRoom(c context.Context, req *CreateRoomReq) (*Room, erro
 		Members:         members,
 		CreatedAt:       created_at,
 		IsDirectChannel: false,
-		Messages:        []int{},
 	}
 
 	new_room := &Room{
@@ -53,6 +52,9 @@ func (s *Service) CreateRoom(c context.Context, req *CreateRoomReq) (*Room, erro
 			default_channel.ID: members,
 		},
 		CreatedAt: created_at,
+		ChannelMap: map[gocql.UUID]*Channel{
+			default_channel.ID: default_channel,
+		},
 	}
 
 	repo, err := s.REPOSITORY.CreateRoom(ctx, new_room, default_channel)
@@ -131,22 +133,76 @@ func (s *Service) CreateChannel(c context.Context, req *CreateChannelReq) (*Room
 	return room, nil
 }
 
+func (s *Service) CreateDirectChannel(c context.Context, req *CreateDirectChannelReq) (gocql.UUID, *Channel, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	created_at := time.Now()
+	new_channel_id, _ := gocql.RandomUUID()
+	room_id := gocql.UUID{}
+	admin := gocql.UUID{}
+	members := []gocql.UUID{req.Sender}
+
+	new_channel := Channel{
+		ID:              new_channel_id,
+		ChannelName:     "",
+		Room:            room_id,
+		IsDirectChannel: true,
+		CreatedAt:       created_at,
+		Members:         members,
+	}
+
+	log.Println(admin)
+	room_id, chn, err := s.REPOSITORY.CreateDirectChannel(ctx, &new_channel, admin, req.Reciever)
+
+	if err != nil {
+		return room_id, nil, err
+	}
+
+	return room_id, chn, nil
+}
+
 func (s *Service) DeleteChannel(c context.Context, req *DeleteChannelReq) (*Room, error) {
 	ctx, cancel := context.WithTimeout(c, s.timeout)
 	defer cancel()
 
-	new_channel := Channel{
+	delete_channel := Channel{
 		ID:              req.ChannelID,
 		Room:            req.RoomID,
 		IsDirectChannel: false,
 	}
 
 	log.Println(req.Admin)
-	room, err := s.REPOSITORY.DeleteChannel(ctx, &new_channel, req.Admin)
+	room, err := s.REPOSITORY.DeleteChannel(ctx, &delete_channel, req.Admin)
 
 	if err != nil {
 		return nil, err
 	}
 
 	return room, nil
+}
+
+func (s *Service) WriteMessage(c context.Context, msg *Message) error {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	err := s.REPOSITORY.WriteMessageToDB(ctx, msg)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) CheckChannelMembership(c context.Context, join_channel_req *JoinChannelReq) (bool, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+	return s.REPOSITORY.CheckChannelMembership(ctx, join_channel_req.RoomID, join_channel_req.ChannelID, join_channel_req.UserID)
+}
+
+func (s *Service) CheckIfChannelExists(c context.Context, req *CreateDirectChannelReq) (*Channel, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+	return s.REPOSITORY.CheckIfChannelExists(ctx, req)
 }

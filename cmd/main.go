@@ -27,7 +27,8 @@ func main() {
 
 	wsRepo := ws.NewRepository(dbConn.GetDb())
 	wsService := ws.NewService(wsRepo)
-	hub := ws.NewHub()
+	hub := ws.NewHub(wsRepo)
+	go hub.Run()
 	wsHandler := ws.NewHandler(hub, wsService)
 
 	r := routes.RouterInit(userHandler, wsHandler)

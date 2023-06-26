@@ -53,3 +53,11 @@ go run cmd/main.go
 - `localhost:5050/chat/delete_room`
 - `localhost:5050/chat/create_channel`
 - `localhost:5050/chat/delete_channel`
+- `localhost:5050/ws/create_direct_channl`
+- `localhost:5050/ws/join_channel/{channel_id}`
+
+### TODO:
+1. Create fetch all messages functionality
+2. Check and test the middleware authorization and authentication
+3. Implement encryption between users
+4. Remodel the schema to find opportunities to remove `ALLOW FILTERING`
