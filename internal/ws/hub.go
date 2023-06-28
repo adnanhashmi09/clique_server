@@ -95,6 +95,7 @@ type REPOSITORY interface {
 	CheckChannelMembership(ctx context.Context, roomID, channelID, userID gocql.UUID) (bool, error)
 	CreateDirectChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID, reciever string) (gocql.UUID, *Channel, error)
 	CheckIfChannelExists(ctx context.Context, req *CreateDirectChannelReq) (*Channel, error)
+	FetchAllMessages(ctx context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error)
 }
 
 type SERVICE interface {
@@ -108,6 +109,7 @@ type SERVICE interface {
 	CheckChannelMembership(c context.Context, join_channel_req *JoinChannelReq) (bool, error)
 	CreateDirectChannel(c context.Context, req *CreateDirectChannelReq) (gocql.UUID, *Channel, error)
 	CheckIfChannelExists(c context.Context, req *CreateDirectChannelReq) (*Channel, error)
+	FetchAllMessages(c context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error)
 }
 
 func NewHub(repo REPOSITORY) *Hub {

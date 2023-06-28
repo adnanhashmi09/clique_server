@@ -1,11 +1,13 @@
 package ws
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -469,3 +471,62 @@ func (h *Handler) JoinChannel(w http.ResponseWriter, r *http.Request) {
 	go cl.writeMessage()
 	cl.readMessage(r.Context(), h)
 }
+
+func (h *Handler) FetchAllMessages(w http.ResponseWriter, r *http.Request) {
+	requesting_user_id := r.Context().Value("requesting_user_id").(string)
+	user_id, err := gocql.ParseUUID(requesting_user_id)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Error", http.StatusBadRequest)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	log.Println(limitStr)
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		http.Error(w, "Invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	pg_state_string := r.URL.Query().Get("page_state")
+	log.Println("incoming string", pg_state_string)
+
+	pg_state, err := base64.URLEncoding.DecodeString(pg_state_string)
+	log.Printf("buffer: %+v", pg_state)
+	if err != nil {
+		log.Println("Error decoding Base64 string:", err)
+		http.Error(w, "Error decoding Base64 string", http.StatusBadRequest)
+		return
+	}
+
+	chn_id, err := gocql.ParseUUID(chi.URLParam(r, "channel_id"))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Channel ID not provided or incorrect", http.StatusBadRequest)
+		return
+	}
+
+	res, pageState, err := h.SERVICE.FetchAllMessages(r.Context(), chn_id, user_id, limit, pg_state)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	log.Println(base64.URLEncoding.EncodeToString(pageState))
+
+	extended_res := struct {
+		Messages  []Message `json:"messages"`
+		PageState string    `json:"page_state"`
+	}{
+		Messages:  res,
+		PageState: base64.URLEncoding.EncodeToString(pageState),
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(extended_res)
+}
+
+// 2023-06-27T18:51:58.435Z

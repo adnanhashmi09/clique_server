@@ -1,9 +1,11 @@
 package routes
 
 import (
-	"github.com/adnanhashmi09/clique_server/utils"
+	"context"
 	"log"
 	"net/http"
+
+	"github.com/adnanhashmi09/clique_server/utils"
 )
 
 func verify_jwt(next http.Handler) http.Handler {
@@ -19,7 +21,7 @@ func verify_jwt(next http.Handler) http.Handler {
 			http.Error(w, "not authorized", http.StatusInternalServerError)
 			return
 		}
-		log.Println(cookie.Value)
+
 		claims, err := utils.Verify_JWT_Token(cookie.Value)
 
 		if err != nil {
@@ -27,7 +29,9 @@ func verify_jwt(next http.Handler) http.Handler {
 			return
 		}
 
-		log.Println(claims)
+		ctx := context.WithValue(r.Context(), "requesting_user_id", claims.ID)
+		r = r.WithContext(ctx)
+
 		next.ServeHTTP(w, r)
 	})
 }

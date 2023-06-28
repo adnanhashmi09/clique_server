@@ -34,7 +34,5 @@ func RouterInit(userHandler *user.Handler, wsHandler *ws.Handler) http.Handler {
 		RoomRoutes(r, wsHandler)
 	})
 
-	// r.Mount("/ws", websocket.Handler(handleWsConnection))
-
 	return r
 }

@@ -206,3 +206,9 @@ func (s *Service) CheckIfChannelExists(c context.Context, req *CreateDirectChann
 	defer cancel()
 	return s.REPOSITORY.CheckIfChannelExists(ctx, req)
 }
+
+func (s *Service) FetchAllMessages(c context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error) {
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+	return s.REPOSITORY.FetchAllMessages(ctx, chn_id, user_id, limit, pg_state)
+}

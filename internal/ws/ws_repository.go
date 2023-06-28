@@ -888,3 +888,39 @@ func (r *Repository) CheckIfChannelExists(ctx context.Context, req *CreateDirect
 
 	return channel, nil
 }
+
+func (r *Repository) FetchAllMessages(ctx context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error) {
+	query := "SELECT id from channels where id=? AND members CONTAINS ? ALLOW FILTERING"
+	var uid gocql.UUID
+
+	if err := r.db.Query(query, chn_id, user_id).WithContext(ctx).Scan(&uid); err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, nil, errors.New("Channel not found") //user not found
+		}
+		return nil, nil, err
+	}
+	// TODO: Implement Paging
+	// Fetch messages of the channel
+	var messages []Message
+	query = `SELECT 
+           channel_id, sender_id, room_id, content, timestamp, type 
+           FROM messages 
+           WHERE channel_id = ? 
+           ORDER BY timestamp DESC 
+           `
+	// var pageState []byte
+	iter := r.db.Query(query, chn_id).PageSize(limit).PageState(pg_state).Iter()
+	defer iter.Close()
+	nextPageState := iter.PageState()
+
+	var msg Message
+	for iter.Scan(&msg.ChannelID, &msg.SenderID, &msg.RoomID, &msg.Content, &msg.Timestamp, &msg.Type) {
+		messages = append(messages, msg)
+	}
+	if err := iter.Close(); err != nil {
+		log.Println("Error at FetchAllMessages repo function: ", err)
+		return nil, nil, err
+	}
+
+	return messages, nextPageState, nil
+}
