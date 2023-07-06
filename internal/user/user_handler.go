@@ -92,7 +92,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	response, err := h.SERVICE.Login(r.Context(), &u)
 
 	if err != nil {
-		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintln("Invalid credentials."), http.StatusInternalServerError)
 		return
 	}
 
