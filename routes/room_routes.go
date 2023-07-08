@@ -13,4 +13,5 @@ func RoomRoutes(r chi.Router, wsHandler *ws.Handler) {
 	r.Post("/create_channel", wsHandler.CreateChannel)
 	r.Post("/delete_channel", wsHandler.DeleteChannel)
 	r.Get("/fetch_messages/{channel_id}", wsHandler.FetchAllMessages)
+	r.Get("/room_details/{room_id}", wsHandler.GetRoomDetails)
 }

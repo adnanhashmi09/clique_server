@@ -19,29 +19,39 @@ type Hub struct {
 }
 
 type Room struct {
-	ID         gocql.UUID                  `json:"id"`
-	RoomName   string                      `json:"room_name"`
-	Channels   []gocql.UUID                `json:"channels"`
-	Members    map[gocql.UUID][]gocql.UUID `json:"members"` // map of channel id to Members
-	CreatedAt  time.Time                   `json:"created_at"`
-	Admin      gocql.UUID                  `json:"admin"`
+	ID         gocql.UUID              `json:"id"`
+	RoomName   string                  `json:"room_name"`
+	Channels   []gocql.UUID            `json:"channels"`
+	Members    map[gocql.UUID][]string `json:"members"` // map of channel id to Members
+	CreatedAt  time.Time               `json:"created_at"`
+	Admin      string                  `json:"admin"`
 	ChannelMap map[gocql.UUID]*Channel
 }
 
+type RoomDetails struct {
+	ID           gocql.UUID              `json:"id"`
+	RoomName     string                  `json:"room_name"`
+	ChannelsList []gocql.UUID            `json:"channels_list"`
+	Channels     []*Channel              `json:"channels"`
+	Members      map[gocql.UUID][]string `json:"members"` // map of channel id to Members
+	CreatedAt    time.Time               `json:"created_at"`
+	Admin        string                  `json:"admin"`
+}
+
 type Channel struct {
-	ID              gocql.UUID   `json:"id"`
-	ChannelName     string       `json:"channel_name"`
-	Room            gocql.UUID   `json:"room_id"`
-	Members         []gocql.UUID `json:"members"`
-	IsDirectChannel bool         `json:"is_direct"`
-	CreatedAt       time.Time    `json:"created_at"`
+	ID              gocql.UUID `json:"id"`
+	ChannelName     string     `json:"channel_name"`
+	Room            gocql.UUID `json:"room_id"`
+	Members         []string   `json:"members"`
+	IsDirectChannel bool       `json:"is_direct"`
+	CreatedAt       time.Time  `json:"created_at"`
 
 	Clients map[gocql.UUID]*Client
 }
 
 type CreateRoomReq struct {
-	RoomName string     `json:"room_name"`
-	Admin    gocql.UUID `json:"admin"`
+	RoomName string `json:"room_name"`
+	Admin    string `json:"admin"`
 }
 
 type JoinOrLeaveRoomReq struct {
@@ -53,12 +63,13 @@ type JoinOrLeaveRoomReq struct {
 
 type CreateChannelReq struct {
 	RoomID      gocql.UUID `json:"room_id"`
-	Admin       gocql.UUID `json:"admin"`
+	Admin       string     `json:"admin"`
+	Username    string     `json:"username"`
 	ChannelName string     `json:"channel_name"`
 }
 
 type CreateDirectChannelReq struct {
-	Sender          gocql.UUID `json:"sender"`
+	Sender          string     `json:"sender"`
 	Reciever        string     `json:"reciever"`
 	ChannelID       gocql.UUID `json:"channel_id"`
 	IsDirectChannel bool
@@ -66,13 +77,14 @@ type CreateDirectChannelReq struct {
 
 type DeleteChannelReq struct {
 	RoomID    gocql.UUID `json:"room_id"`
-	Admin     gocql.UUID `json:"admin"`
+	Admin     string     `json:"admin"`
 	ChannelID gocql.UUID `json:"channel_id"`
 }
 
 type DeleteRoomReq struct {
-	ID     gocql.UUID `json:"room_id"`
-	UserID gocql.UUID `json:"user_id"`
+	ID       gocql.UUID `json:"room_id"`
+	UserID   gocql.UUID `json:"user_id"`
+	Username string     `json:"username"`
 }
 
 type JoinChannelReq struct {
@@ -100,14 +112,15 @@ type REPOSITORY interface {
 	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
 	LeaveRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)
 	DeleteRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID) (*Room, error)
-	CreateChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID) (*Room, error)
-	DeleteChannel(ctx context.Context, chn *Channel, admin gocql.UUID) (*Room, error)
+	CreateChannel(ctx context.Context, new_channel *Channel, admin string) (*Room, *Channel, error)
+	DeleteChannel(ctx context.Context, chn *Channel, admin string) (*Room, gocql.UUID, error)
 	FetchAllRooms() (map[gocql.UUID]*Room, error)
 	WriteMessageToDB(ctx context.Context, msg *Message) error
-	CheckChannelMembership(ctx context.Context, roomID, channelID, userID gocql.UUID) (bool, error)
+	CheckChannelMembership(ctx context.Context, username string, roomID, channelID gocql.UUID) (bool, error)
 	CreateDirectChannel(ctx context.Context, new_channel *Channel, admin gocql.UUID, reciever string) (gocql.UUID, *Channel, error)
 	CheckIfChannelExists(ctx context.Context, req *CreateDirectChannelReq) (*Channel, error)
 	FetchAllMessages(ctx context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error)
+	GetAllRoomDetails(ctx context.Context, room_id gocql.UUID) (*RoomDetails, error)
 }
 
 type SERVICE interface {
@@ -115,13 +128,14 @@ type SERVICE interface {
 	JoinRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
 	LeaveRoom(c context.Context, req *JoinOrLeaveRoomReq) (*Room, error)
 	DeleteRoom(c context.Context, req *DeleteRoomReq) (*Room, error)
-	CreateChannel(c context.Context, req *CreateChannelReq) (*Room, error)
-	DeleteChannel(c context.Context, req *DeleteChannelReq) (*Room, error)
+	CreateChannel(c context.Context, req *CreateChannelReq) (*Room, *Channel, error)
+	DeleteChannel(c context.Context, req *DeleteChannelReq) (*Room, gocql.UUID, error)
 	WriteMessageToDB(c context.Context, msg *Message) error
 	CheckChannelMembership(c context.Context, join_channel_req *JoinChannelReq) (bool, error)
 	CreateDirectChannel(c context.Context, req *CreateDirectChannelReq) (gocql.UUID, *Channel, error)
 	CheckIfChannelExists(c context.Context, req *CreateDirectChannelReq) (*Channel, error)
 	FetchAllMessages(c context.Context, chn_id gocql.UUID, user_id gocql.UUID, limit int, pg_state []byte) ([]Message, []byte, error)
+	GetAllRoomDetails(c context.Context, room_id gocql.UUID) (*RoomDetails, error)
 }
 
 func NewHub(repo REPOSITORY) *Hub {
@@ -151,6 +165,9 @@ func (h *Hub) Run() {
 				if channel, ok := room.ChannelMap[cl.ChannelID]; ok {
 					if _, ok := channel.Clients[cl.ID]; !ok {
 						log.Println("Register")
+						if channel.Clients == nil {
+							channel.Clients = make(map[gocql.UUID]*Client)
+						}
 						channel.Clients[cl.ID] = cl
 					}
 				}
@@ -176,6 +193,7 @@ func (h *Hub) Run() {
 				room := h.Rooms[msg.RoomID]
 				if _, ok := room.ChannelMap[msg.ChannelID]; ok {
 					channel := room.ChannelMap[msg.ChannelID]
+					log.Printf("%+v", channel.Clients)
 					for _, cl := range channel.Clients {
 						if cl.ID == msg.SenderID {
 							continue

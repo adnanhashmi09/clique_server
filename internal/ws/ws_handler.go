@@ -44,7 +44,7 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if create_room_req.Admin.String() == "" {
+	if create_room_req.Admin == "" {
 		http.Error(w, "Admin not provided", http.StatusBadRequest)
 		return
 	}
@@ -230,8 +230,8 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if create_channel_req.Admin.String() == "" {
-		http.Error(w, "Admin ID not provided", http.StatusBadRequest)
+	if create_channel_req.Admin == "" {
+		http.Error(w, "Admin not provided", http.StatusBadRequest)
 		return
 	}
 
@@ -240,13 +240,20 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.SERVICE.CreateChannel(r.Context(), &create_channel_req)
+	res, chn, err := h.SERVICE.CreateChannel(r.Context(), &create_channel_req)
 	if err != nil {
 		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
 		return
 	}
 
+	prev_chan_map := h.Hub.Rooms[res.ID].ChannelMap
+	prev_chan_map[chn.ID] = chn
+	res.ChannelMap = prev_chan_map
+
 	h.Hub.Rooms[res.ID] = res
+
+	// TODO: Selectively return data fields instead
+	// of returning the entire res object
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(res)
@@ -271,8 +278,8 @@ func (h *Handler) CreateDirectChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if create_channel_req.Sender.String() == "" {
-		http.Error(w, "User ID not provided", http.StatusBadRequest)
+	if create_channel_req.Sender == "" {
+		http.Error(w, "User not provided", http.StatusBadRequest)
 		return
 	}
 
@@ -281,14 +288,14 @@ func (h *Handler) CreateDirectChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chn, err := h.SERVICE.CheckIfChannelExists(r.Context(), &create_channel_req)
+	chn_new, err := h.SERVICE.CheckIfChannelExists(r.Context(), &create_channel_req)
 	if err != nil {
 		log.Println("error encountered at CheckIfChannelExists. err: ", err)
 		http.Error(w, "Server error", http.StatusInternalServerError)
 		return
 	}
 
-	if chn == nil {
+	if chn_new == nil {
 		room_id, chn, err := h.SERVICE.CreateDirectChannel(r.Context(), &create_channel_req)
 		if err != nil {
 			http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
@@ -297,10 +304,11 @@ func (h *Handler) CreateDirectChannel(w http.ResponseWriter, r *http.Request) {
 
 		h.Hub.Rooms[room_id].Channels = append(h.Hub.Rooms[room_id].Channels, chn.ID)
 		h.Hub.Rooms[room_id].ChannelMap[chn.ID] = chn
+		chn_new = chn
 	}
 
 	w.WriteHeader(http.StatusSeeOther)
-	json.NewEncoder(w).Encode(chn)
+	json.NewEncoder(w).Encode(chn_new)
 }
 
 func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +334,7 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if delete_channel_req.Admin.String() == "" {
+	if delete_channel_req.Admin == "" {
 		http.Error(w, "Admin ID not provided", http.StatusBadRequest)
 		return
 	}
@@ -336,12 +344,16 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.SERVICE.DeleteChannel(r.Context(), &delete_channel_req)
+	res, chn_id, err := h.SERVICE.DeleteChannel(r.Context(), &delete_channel_req)
 	if err != nil {
 		http.Error(w, fmt.Sprintln(err.Error()), http.StatusInternalServerError)
 		return
 	}
 
+	prev_chan_map := h.Hub.Rooms[res.ID].ChannelMap
+	delete(prev_chan_map, chn_id)
+
+	res.ChannelMap = prev_chan_map
 	h.Hub.Rooms[res.ID] = res
 
 	w.WriteHeader(http.StatusOK)
@@ -455,12 +467,13 @@ func (h *Handler) JoinChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := &Message{
-		RoomID:    join_channel_req.RoomID,
-		ChannelID: join_channel_req.ChannelID,
-		SenderID:  join_channel_req.UserID,
-		Timestamp: time.Now(),
-		Type:      "notification",
-		Content:   fmt.Sprintf("%v joined the room.", join_channel_req.Username),
+		RoomID:         join_channel_req.RoomID,
+		ChannelID:      join_channel_req.ChannelID,
+		SenderID:       join_channel_req.UserID,
+		SenderUsername: join_channel_req.Username,
+		Timestamp:      time.Now(),
+		Type:           "notification",
+		Content:        fmt.Sprintf("%v joined the room.", join_channel_req.Username),
 	}
 
 	log.Println("joined register channel")
@@ -528,3 +541,26 @@ func (h *Handler) FetchAllMessages(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(extended_res)
 }
+<<<<<<< HEAD
+=======
+
+func (h *Handler) GetRoomDetails(w http.ResponseWriter, r *http.Request) {
+
+	RoomID, err := gocql.ParseUUID(chi.URLParam(r, "room_id"))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Room ID not provided or incorrect", http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.SERVICE.GetAllRoomDetails(r.Context(), RoomID)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(res)
+}
+>>>>>>> switch-to-username-from-id

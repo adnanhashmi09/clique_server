@@ -4,9 +4,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     id UUID,
     room_name TEXT,
     channels SET<UUID>,
-    members MAP<UUID, FROZEN<SET<string>>>,
+    members MAP<UUID, FROZEN<SET<TEXT>>>,
     created_at TIMESTAMP,
-    admin UUID,
+    admin TEXT,
     PRIMARY KEY((id, admin), created_at)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
 
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS channels (
     id UUID,
     channel_name TEXT,
     room_id UUID,
-    members SET<string>,
+    members SET<TEXT>,
     is_direct_channel BOOLEAN,
     created_at TIMESTAMP,
     PRIMARY KEY((room_id, id), created_at)
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS channels (
 
 CREATE TABLE IF NOT EXISTS messages (
     channel_id UUID,
-    sender string,
+    sender_id UUID,
+    sender_username TEXT,
     room_id UUID, 
     content TEXT,
     timestamp TIMESTAMP,
@@ -34,5 +35,5 @@ CREATE TABLE IF NOT EXISTS messages (
 
 
 INSERT INTO rooms (id, room_name, channels, members, created_at, admin)
-VALUES (00000000-0000-0000-0000-000000000000, '', null, null, toTimestamp(now()), 00000000-0000-0000-0000-000000000000);
+VALUES (00000000-0000-0000-0000-000000000000, '', null, null, toTimestamp(now()), '');
 
