@@ -19,6 +19,7 @@ func NewRepository(db *gocql.Session) REPOSITORY {
 	return &Repository{db: db}
 }
 
+// This function will be used to initialize the Rooms map in Hub
 func (r *Repository) FetchAllRooms() (map[gocql.UUID]*Room, error) {
 	roomQuery := "SELECT id, room_name, channels, members, created_at, admin FROM rooms"
 	roomIter := r.db.Query(roomQuery).Iter()
@@ -655,17 +656,19 @@ func (r *Repository) CreateDirectChannel(ctx context.Context, new_channel *Chann
 
 	// ceck whether sender id is legit or not
 	var sender_id gocql.UUID
+	var sender_username string
+	var sender_email string
 
 	if err := r.db.Query(`
            SELECT
-           id
+           id, username, email
            FROM users
            where id=?
            ALLOW FILTERING
-    `, new_channel.Members[0]).WithContext(ctx).Scan(&sender_id); err != nil {
+    `, new_channel.Members[0]).WithContext(ctx).Scan(&sender_id, &sender_username, &sender_email); err != nil {
 
 		if err == gocql.ErrNotFound {
-			return gocql.UUID{}, nil, errors.New("Receiver doesn't exist.")
+			return gocql.UUID{}, nil, errors.New("Sender doesn't exist.")
 		} else {
 			log.Println("Error occured while executing query to check if user is legit or not in CreateDirectChannel repository function:", err)
 			return gocql.UUID{}, nil, errors.New("Server error.")
@@ -674,14 +677,16 @@ func (r *Repository) CreateDirectChannel(ctx context.Context, new_channel *Chann
 
 	// check whether reciever username is legit or not
 	var reciever_id gocql.UUID
+	var reciever_username string
+	var reciever_email string
 
 	if err := r.db.Query(`
            SELECT
-           id
+           id, username, email
            FROM users
            where username=?
            ALLOW FILTERING
-    `, reciever).WithContext(ctx).Scan(&reciever_id); err != nil {
+    `, reciever).WithContext(ctx).Scan(&reciever_id, &reciever_username, &reciever_email); err != nil {
 
 		if err == gocql.ErrNotFound {
 			return gocql.UUID{}, nil, errors.New("Receiver doesn't exist.")
@@ -713,6 +718,26 @@ func (r *Repository) CreateDirectChannel(ctx context.Context, new_channel *Chann
            AND admin=?
            AND created_at=?`,
 		Args:       []interface{}{new_channel.ID, nil, room_id, room_id, created_at},
+		Idempotent: true,
+	})
+
+	// add to first user
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE users SET direct_msg_channels = direct_msg_channels  + {?}, 
+           where id=?
+           AND username=?
+           AND email=?`,
+		Args:       []interface{}{new_channel.ID, sender_id, sender_username, sender_email},
+		Idempotent: true,
+	})
+
+	// add to second user
+	batch.Entries = append(batch.Entries, gocql.BatchEntry{
+		Stmt: `UPDATE users SET direct_msg_channels = direct_msg_channels  + {?}, 
+           where id=?
+           AND username=?
+           AND email=?`,
+		Args:       []interface{}{new_channel.ID, reciever_id, reciever_username, reciever_email},
 		Idempotent: true,
 	})
 

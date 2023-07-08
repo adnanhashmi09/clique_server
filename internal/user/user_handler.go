@@ -102,6 +102,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   false,
 		MaxAge:   3600,
+		SameSite: http.SameSiteNoneMode,
 	}
 
 	res := &LoginUserRes{

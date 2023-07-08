@@ -83,6 +83,18 @@ type JoinChannelReq struct {
 	IsDirectChannel bool       `json:"is_direct_channel"`
 }
 
+type FetchRoomsReq struct {
+	UserID   gocql.UUID `json:"user_id"`
+	Username string     `json:"username"`
+	Email    string     `json:"email"`
+}
+
+type FetchRoomsRes struct {
+	DirectChannels []gocql.UUID `json:"direct_channels"`
+	Rooms          []gocql.UUID `json:"rooms"`
+	Channels       []gocql.UUID `json:"channels"`
+}
+
 type REPOSITORY interface {
 	CreateRoom(ctx context.Context, room *Room, default_channel *Channel) (*Room, error)
 	JoinRoom(ctx context.Context, room_id gocql.UUID, user_id gocql.UUID, username string, email string) (*Room, error)

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT,
   rooms SET<UUID>,
   direct_msg_channels SET<UUID>,
+  is_verified BOOLEAN DEFAULT false,
   PRIMARY KEY ((id, username, email))
 );
 
