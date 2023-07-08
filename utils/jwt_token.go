@@ -10,14 +10,16 @@ import (
 type CustomClaims struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	Email    string `json:"email"`
 	jwt.RegisteredClaims
 }
 
-func Generate_JWT_Token(id string, username string) (string, error) {
+func Generate_JWT_Token(id string, username string, email string) (string, error) {
 	secretKey := []byte(Get_Env_Variable("SECRET"))
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomClaims{
 		ID:       id,
 		Username: username,
+		Email:    email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    id,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),

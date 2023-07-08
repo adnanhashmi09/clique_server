@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+
+	"github.com/gocql/gocql"
 )
 
 type Handler struct {
@@ -130,4 +133,24 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Logout Successful",
 	})
+}
+
+func (h *Handler) AllInfo(w http.ResponseWriter, r *http.Request) {
+	requesting_user_id := r.Context().Value("requesting_user_id").(string)
+	user_id, err := gocql.ParseUUID(requesting_user_id)
+
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Error", http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.SERVICE.AllInfo(r.Context(), user_id)
+	if err != nil {
+		log.Println("Error at getting all info: ", err)
+		http.Error(w, "Internal Server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(res)
 }

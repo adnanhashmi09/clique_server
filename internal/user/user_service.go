@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/adnanhashmi09/clique_server/utils"
+	"github.com/gocql/gocql"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -76,7 +77,7 @@ func (s *Service) Login(c context.Context, req *LoginUserReq) (*LoginUserRes, er
 		return nil, fmt.Errorf("Passwords don't match. %v", err)
 	}
 
-	signed_jwt, err := utils.Generate_JWT_Token(u.ID.String(), u.Username)
+	signed_jwt, err := utils.Generate_JWT_Token(u.ID.String(), u.Username, u.Email)
 
 	if err != nil {
 		return nil, err
@@ -90,4 +91,27 @@ func (s *Service) Login(c context.Context, req *LoginUserReq) (*LoginUserRes, er
 		Name:        u.Name,
 	}, nil
 
+}
+
+func (s *Service) AllInfo(c context.Context, user_id gocql.UUID) (*UserAllInfo, error) {
+
+	ctx, cancel := context.WithTimeout(c, s.timeout)
+	defer cancel()
+
+	requesting_user_username := ctx.Value("requesting_user_username").(string)
+	requesting_user_email := ctx.Value("requesting_user_email").(string)
+
+	dm, rooms, user, err := s.REPOSITORY.FetchAllInformation(ctx, user_id, requesting_user_username, requesting_user_email)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := &UserAllInfo{
+		DirectMsgChannels: dm,
+		Rooms:             rooms,
+		User:              user,
+	}
+
+	return result, nil
 }

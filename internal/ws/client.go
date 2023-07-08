@@ -19,12 +19,13 @@ type Client struct {
 }
 
 type Message struct {
-	RoomID    gocql.UUID `json:"room_id"`
-	SenderID  gocql.UUID `json:"sender_id"`
-	ChannelID gocql.UUID `json:"channel_id"`
-	Content   string     `json:"content"`
-	Timestamp time.Time  `json:"timestamp"`
-	Type      string     `json:"type"`
+	RoomID         gocql.UUID `json:"room_id"`
+	SenderID       gocql.UUID `json:"sender_id"`
+	SenderUsername string     `json:"sender_username"`
+	ChannelID      gocql.UUID `json:"channel_id"`
+	Content        string     `json:"content"`
+	Timestamp      time.Time  `json:"timestamp"`
+	Type           string     `json:"type"`
 }
 
 func (cl *Client) writeMessage() {
@@ -49,8 +50,6 @@ func (cl *Client) readMessage(ctx context.Context, h *Handler) {
 		cl.Conn.Close()
 	}()
 
-	log.Println("read message function")
-
 	for {
 		_, m, err := cl.Conn.ReadMessage()
 		if err != nil {
@@ -62,12 +61,13 @@ func (cl *Client) readMessage(ctx context.Context, h *Handler) {
 		}
 
 		msg := &Message{
-			RoomID:    cl.RoomID,
-			SenderID:  cl.ID,
-			ChannelID: cl.ChannelID,
-			Content:   string(m),
-			Timestamp: time.Now(),
-			Type:      "text_message",
+			RoomID:         cl.RoomID,
+			SenderID:       cl.ID,
+			SenderUsername: cl.Username,
+			ChannelID:      cl.ChannelID,
+			Content:        string(m),
+			Timestamp:      time.Now(),
+			Type:           "text_message",
 		}
 
 		// write msg to DB
@@ -75,12 +75,13 @@ func (cl *Client) readMessage(ctx context.Context, h *Handler) {
 		if err != nil {
 			log.Println("Error sending message to db. err: ", err)
 			msg = &Message{
-				RoomID:    cl.RoomID,
-				SenderID:  cl.ID,
-				ChannelID: cl.ChannelID,
-				Content:   string("Cannot send this message since this message wasn't saved."),
-				Timestamp: time.Now(),
-				Type:      "error",
+				RoomID:         cl.RoomID,
+				SenderID:       cl.ID,
+				SenderUsername: cl.Username,
+				ChannelID:      cl.ChannelID,
+				Content:        string("Cannot send this message since this message wasn't saved."),
+				Timestamp:      time.Now(),
+				Type:           "error",
 			}
 
 			h.Hub.NotifyTheSender <- msg

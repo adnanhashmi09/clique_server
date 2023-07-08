@@ -30,6 +30,8 @@ func verify_jwt(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), "requesting_user_id", claims.ID)
+		ctx = context.WithValue(ctx, "requesting_user_username", claims.Username)
+		ctx = context.WithValue(ctx, "requesting_user_email", claims.Email)
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)

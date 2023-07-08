@@ -102,3 +102,54 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*User, e
 
 	return &u, nil
 }
+func (r *Repository) FetchAllInformation(ctx context.Context, user_id gocql.UUID, username, email string) ([]*Channel, []*Room, *User, error) {
+	query := `SELECT id, username, email, name, rooms, direct_msg_channels FROM users WHERE id=? AND username=? AND email=? LIMIT 1`
+
+	var user User
+	err := r.db.Query(query, user_id, username, email).WithContext(ctx).Scan(
+		&user.ID, &user.Username, &user.Email, &user.Name, &user.Rooms, &user.DirectMsgChannels,
+	)
+
+	if err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, nil, nil, errors.New("user not found")
+		}
+		return nil, nil, nil, err
+	}
+
+	query = `SELECT id, channel_name, room_id, members, is_direct_channel, created_at FROM channels WHERE id IN ? ALLOW FILTERING`
+
+	var channels []*Channel
+	if len(user.DirectMsgChannels) != 0 {
+		iter := r.db.Query(query, user.DirectMsgChannels).WithContext(ctx).Iter()
+		channel := &Channel{}
+		for iter.Scan(
+			&channel.ID, &channel.ChannelName, &channel.Room, &channel.Members, &channel.IsDirectChannel, &channel.CreatedAt,
+		) {
+			channels = append(channels, channel)
+			channel = &Channel{}
+		}
+		if err := iter.Close(); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	query = `SELECT id, room_name, channels, members, created_at, admin FROM rooms WHERE id IN ? ALLOW FILTERING`
+	var rooms []*Room
+	if len(user.Rooms) != 0 {
+		iter := r.db.Query(query, user.Rooms).WithContext(ctx).Iter()
+		room := &Room{}
+		for iter.Scan(
+			&room.ID, &room.RoomName, &room.Channels, &room.Members, &room.CreatedAt, &room.Admin,
+		) {
+			room.ChannelMap = make(map[gocql.UUID]*Channel)
+			rooms = append(rooms, room)
+			room = &Room{}
+		}
+		if err := iter.Close(); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	return channels, rooms, &user, nil
+}

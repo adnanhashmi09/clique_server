@@ -21,11 +21,17 @@ func RouterInit(userHandler *user.Handler, wsHandler *ws.Handler) http.Handler {
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
 
+	r.Route("/user", func(r chi.Router) {
+		r.Use(verify_jwt)
+		UserRoutes(r, userHandler)
+	})
+
 	r.Route("/auth", func(r chi.Router) {
 		AuthRoutes(r, userHandler)
 	})
 
 	r.Route("/ws", func(r chi.Router) {
+		r.Use(verify_jwt)
 		WSRoutes(r, wsHandler)
 	})
 
