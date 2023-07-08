@@ -541,8 +541,6 @@ func (h *Handler) FetchAllMessages(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(extended_res)
 }
-<<<<<<< HEAD
-=======
 
 func (h *Handler) GetRoomDetails(w http.ResponseWriter, r *http.Request) {
 
@@ -563,4 +561,3 @@ func (h *Handler) GetRoomDetails(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(res)
 }
->>>>>>> switch-to-username-from-id
